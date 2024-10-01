@@ -93,10 +93,12 @@ This command will run all tests in the project and its subdirectories. Make sure
 **Endpoint:** POST `/log`
 
 **Headers:**
+
 - `Content-Type: application/json`
 - `Authorization: your-api-key`
 
 **Request Body:**
+
 ```json
 {
   "message": "Your log message here",
@@ -109,12 +111,13 @@ Replace `LOG_LEVEL` with the appropriate log level (e.g., INFO, WARNING, ERROR).
 **Response:**
 
 - Success: "Log entry recorded" (200 OK)
-- Error: 
+- Error:
   - 400 Bad Request: "Invalid JSON"
   - 401 Unauthorized: "Unauthorized" (if API key is missing or invalid)
   - 500 Internal Server Error: "API_KEY not set" or "Failed to write log"
 
 **Notes:**
+
 - The API key must be provided in the `Authorization` header.
 - The API key should match the one set in the `API_KEY` environment variable.
 - Make sure to keep your API key secure and do not share it publicly.
