@@ -28,6 +28,25 @@ This project implements a high-performance logging server in Go using the Fiber 
    go mod download
    ```
 
+## Configuration
+
+Before running the server, you need to configure your authorized user ID for security purposes. This is done through the `.env` file in the project root.
+
+1. If you haven't already, create a `.env` file in the project root.
+
+2. Add the following line to your `.env` file:
+
+   ```
+   AUTHORIZED_USER_ID=your-unique-user-id-here
+   ```
+
+   Replace `your-unique-user-id-here` with a unique identifier for your authorized user. This could be a UUID, a hash, or any other string that uniquely identifies the authorized user.
+
+3. Make sure to keep this ID secure and do not share it publicly.
+
+This ID will be used to authenticate requests to view logs, ensuring that only authorized users can access the log data.
+
+
 ## Running the Server
 
 To start the server, run:
