@@ -13,16 +13,17 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/compress"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/monitor"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/joho/godotenv"
 	"html"
 	"regexp"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/monitor"
+	"github.com/joho/godotenv"
 )
 
 type LogEntry struct {
@@ -133,9 +134,9 @@ func main() {
 	app.Use(logger.New())
 
 	// Load .env file
-	if err := godotenv.Load(); err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
+	// if err := godotenv.Load(); err != nil {
+	// 	log.Fatalf("Error loading .env file: %v", err)
+	// }
 
 	// Get configuration from environment variables
 	logFilePath := getEnv("LOG_FILE_PATH", "logs.txt")
@@ -308,15 +309,6 @@ func getEnv(key, defaultValue string) string {
 	}
 	return value
 }
-
-// Helper function to get boolean environment variables with a default value
-// func getEnvBool(key string, defaultValue bool) bool {
-// 	value := os.Getenv(key)
-// 	if value == "" {
-// 		return defaultValue
-// 	}
-// 	return value == "true" || value == "1" || value == "yes"
-// }
 
 // Add these new functions
 func getRateLimitMax() int {
