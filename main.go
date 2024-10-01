@@ -79,6 +79,7 @@ func configureFiber() *fiber.App {
 func setupRoutes(app *fiber.App) {
 	app.Post("/log", handleLog)
 	app.Get("/logs", handleViewLogs)
+	app.Delete("/logs", handleDeleteLogs) // Add this new route
 
 	// Add monitoring endpoint
 	app.Get("/metrics", monitor.New())
@@ -340,4 +341,49 @@ func getRateLimitExpiration() time.Duration {
 		return 1 * time.Minute
 	}
 	return expiration
+}
+
+func handleDeleteLogs(c *fiber.Ctx) error {
+	// Get the expected API key from environment variable
+	expectedAPIKey := getEnv("API_KEY", "")
+	if expectedAPIKey == "" {
+		return c.Status(fiber.StatusInternalServerError).SendString("API_KEY not set")
+	}
+
+	// Get the API key from the Authorization header
+	apiKey := c.Get("Authorization")
+
+	// Check if the API key is provided and matches the expected API key
+	if apiKey == "" || subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedAPIKey)) != 1 {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	// Get log file path from environment variable
+	logFilePath := getEnv("LOG_FILE_PATH", "logs.txt")
+
+	// Close the current log file and writer
+	mu.Lock()
+	if logFile != nil {
+		logFile.Close()
+	}
+	if logWriter != nil {
+		logWriter.Flush()
+	}
+	mu.Unlock()
+
+	// Delete the log file
+	err := os.Remove(logFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return c.Status(fiber.StatusNotFound).SendString("Log file not found")
+		}
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to delete log file")
+	}
+
+	// Reinitialize the log writer
+	if err := initLogWriter(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to reinitialize log writer")
+	}
+
+	return c.SendString("Log file deleted successfully")
 }

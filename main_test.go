@@ -206,6 +206,54 @@ func TestHandleViewLogs(t *testing.T) {
 	})
 }
 
+func TestHandleDeleteLogs(t *testing.T) {
+	app := configureFiber()
+	setupRoutes(app)
+	configureMiddleware(app)
+
+	apiKey := getEnv("API_KEY", "test_api_key")
+	os.Setenv("API_KEY", apiKey)
+
+	t.Run("valid_request", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/logs", nil)
+		req.Header.Set("Authorization", apiKey)
+		resp, _ := app.Test(req)
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Errorf("Expected status OK, got %v", resp.StatusCode)
+		}
+
+		// Verify logs were deleted
+		getReq := httptest.NewRequest("GET", "/logs", nil)
+		getReq.Header.Set("Authorization", apiKey)
+		getResp, _ := app.Test(getReq)
+
+		body, _ := io.ReadAll(getResp.Body)
+		if len(body) > 0 {
+			t.Errorf("Expected empty logs after deletion, got: %s", string(body))
+		}
+	})
+
+	t.Run("missing_api_key", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/logs", nil)
+		resp, _ := app.Test(req)
+
+		if resp.StatusCode != fiber.StatusUnauthorized {
+			t.Errorf("Expected status Unauthorized, got %v", resp.StatusCode)
+		}
+	})
+
+	t.Run("invalid_api_key", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/logs", nil)
+		req.Header.Set("Authorization", "invalid_key")
+		resp, _ := app.Test(req)
+
+		if resp.StatusCode != fiber.StatusUnauthorized {
+			t.Errorf("Expected status Unauthorized, got %v", resp.StatusCode)
+		}
+	})
+}
+
 func TestSanitizeLogLine(t *testing.T) {
 	tests := []struct {
 		name     string

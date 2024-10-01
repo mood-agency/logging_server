@@ -133,6 +133,29 @@ curl -X POST http://localhost:8080/log \
 
 Replace `your-api-key-here` with your actual API key.
 
+### Delete Logs
+
+**Endpoint:** DELETE `/logs`
+
+**Headers:**
+
+- `Authorization: your-api-key`
+
+**Response:**
+
+- Success: "Log file deleted successfully" (200 OK)
+- Error:
+  - 401 Unauthorized: "Unauthorized" (if API key is missing or invalid)
+  - 404 Not Found: "Log file not found"
+  - 500 Internal Server Error: "Failed to delete log file" or "Failed to reinitialize log writer"
+
+**Notes:**
+
+- The API key must be provided in the `Authorization` header.
+- The API key should match the one set in the `API_KEY` environment variable.
+- This operation will delete the entire log file and reinitialize the log writer.
+
+
 ## Performance Considerations
 
 - The server uses Fiber's prefork feature to create multiple worker processes.
