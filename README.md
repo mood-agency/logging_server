@@ -58,6 +58,18 @@ go run main.go
 
 The server will start on `http://localhost:8080` with multiple worker processes, one for each CPU core.
 
+## Running on Docker
+
+```bash
+docker build -t logging-server .
+```
+
+Run with Envs
+
+```bash
+docker run -p 8080:8080 -e AUTHORIZED_USER_ID=your-unique-user-id-here -e LOG_FILE_PATH=/app/logs.txt -e SERVER_HEADER=Go Fiber -e MAX_CONCURRENCY=262144 -e CORS_ALLOWED_ORIGINS=http://localhost:8080 -e SERVER_PORT=8080 logging-server
+```
+
 ## Running Tests
 
 To run the tests for this project, use the following command:
