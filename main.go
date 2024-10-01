@@ -60,6 +60,9 @@ func configureFiber() *fiber.App {
 		StrictRouting: true,
 		CaseSensitive: true,
 		Concurrency:   maxConcurrency,
+		ReadTimeout:   5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:   120 * time.Second,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			var e *fiber.Error
@@ -113,6 +116,15 @@ func configureMiddleware(app *fiber.App) {
 		},
 	}))
 
+	// Add security headers
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("X-XSS-Protection", "1; mode=block")
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("X-Frame-Options", "DENY")
+		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		return c.Next()
+	})
+
 	// Add monitoring endpoint
 	app.Get("/metrics", monitor.New())
 }
@@ -134,9 +146,10 @@ func main() {
 	app.Use(logger.New())
 
 	// Load .env file
-	// if err := godotenv.Load(); err != nil {
-	// 	log.Fatalf("Error loading .env file: %v", err)
-	// }
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+		log.Println("Continuing with environment variables...")
+	}
 
 	// Get configuration from environment variables
 	logFilePath := getEnv("LOG_FILE_PATH", "logs.txt")
