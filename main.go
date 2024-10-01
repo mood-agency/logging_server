@@ -260,8 +260,8 @@ func handleViewLogs(c *fiber.Ctx) error {
 		// Sanitize the log line
 		sanitizedLine := sanitizeLogLine(line)
 
-		// Write the sanitized line to the response
-		if _, err := c.Write([]byte(sanitizedLine)); err != nil {
+		// Write the sanitized line to the response, ensuring it ends with a newline
+		if _, err := c.WriteString(sanitizedLine + "\n"); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Internal server error")
 		}
 	}
