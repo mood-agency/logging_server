@@ -156,6 +156,20 @@ func initApp() error {
 }
 
 func handleLog(c *fiber.Ctx) error {
+	// Get the expected user ID from environment variable
+	expectedUserID := getEnv("AUTHORIZED_USER_ID", "")
+	if expectedUserID == "" {
+		return c.Status(fiber.StatusInternalServerError).SendString("AUTHORIZED_USER_ID not set")
+	}
+
+	// Get the user ID from the query parameter
+	userID := c.Query("user_id")
+
+	// Check if the user ID matches the expected user ID
+	if userID != expectedUserID {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized access")
+	}
+
 	var entry LogEntry
 	if err := c.BodyParser(&entry); err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid JSON")
@@ -163,8 +177,6 @@ func handleLog(c *fiber.Ctx) error {
 
 	mu.Lock()
 	defer mu.Unlock()
-
-	// Remove the check for logWriter being nil, as it should always be initialized now
 
 	if _, err := logWriter.WriteString(entry.Level + ": " + entry.Message + "\n"); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to write log")

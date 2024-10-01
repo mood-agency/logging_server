@@ -56,11 +56,6 @@ go run main.go
 
 The server will start on `http://localhost:8080` with multiple worker processes, one for each CPU core.
 
-
-
-
-
-
 ## Running Tests
 
 To run the tests for this project, use the following command:
