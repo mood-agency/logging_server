@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +18,11 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/joho/godotenv"
+	"html"
+	"regexp"
+	"time"
 )
 
 type LogEntry struct {
@@ -94,6 +99,21 @@ func configureMiddleware(app *fiber.App) {
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} - ${method} ${path}\n",
 	}))
+
+	// Add rate limiting middleware
+	app.Use(limiter.New(limiter.Config{
+		Max:        getRateLimitMax(),
+		Expiration: getRateLimitExpiration(),
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).SendString("Rate limit exceeded")
+		},
+	}))
+
+	// Add monitoring endpoint
+	app.Get("/metrics", monitor.New())
 }
 
 func handleError(c *fiber.Ctx, status int, err error, details string) error {
@@ -156,18 +176,18 @@ func initApp() error {
 }
 
 func handleLog(c *fiber.Ctx) error {
-	// Get the expected user ID from environment variable
-	expectedUserID := getEnv("AUTHORIZED_USER_ID", "")
-	if expectedUserID == "" {
-		return c.Status(fiber.StatusInternalServerError).SendString("AUTHORIZED_USER_ID not set")
+	// Get the expected API key from environment variable
+	expectedAPIKey := getEnv("API_KEY", "")
+	if expectedAPIKey == "" {
+		return c.Status(fiber.StatusInternalServerError).SendString("API_KEY not set")
 	}
 
-	// Get the user ID from the query parameter
-	userID := c.Query("user_id")
+	// Get the API key from the Authorization header
+	apiKey := c.Get("Authorization")
 
-	// Check if the user ID matches the expected user ID
-	if userID != expectedUserID {
-		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized access")
+	// Check if the API key is provided and matches the expected API key
+	if apiKey == "" || subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedAPIKey)) != 1 {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 
 	var entry LogEntry
@@ -193,55 +213,91 @@ func handleLog(c *fiber.Ctx) error {
 func handleViewLogs(c *fiber.Ctx) error {
 	// Ensure the log writer is initialized
 	if logWriter == nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Log writer not initialized")
+		return c.Status(fiber.StatusInternalServerError).SendString("Internal server error")
 	}
 
-	// Get the expected user ID from environment variable
-	expectedUserID := getEnv("AUTHORIZED_USER_ID", "")
-	if expectedUserID == "" {
-		return c.Status(fiber.StatusInternalServerError).SendString("AUTHORIZED_USER_ID not set")
+	// Get the expected API key from environment variable
+	expectedAPIKey := getEnv("API_KEY", "")
+	if expectedAPIKey == "" {
+		return c.Status(fiber.StatusInternalServerError).SendString("Internal server error")
 	}
 
-	// Get the user ID from the query parameter
-	userID := c.Query("user_id")
+	// Get the API key from the Authorization header
+	apiKey := c.Get("Authorization")
 
-	// Check if the user ID matches the expected user ID
-	if userID != expectedUserID {
-		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized access")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Make sure the writer is properly initialized
-	writer := bufio.NewWriter(c.Response().BodyWriter())
-	
-	// Flush the writer at the end
-	err := writer.Flush()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Error flushing response")
+	// Check if the API key is provided and matches the expected API key
+	if apiKey == "" || subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedAPIKey)) != 1 {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 
 	// Get log file path from environment variable
 	logFilePath := getEnv("LOG_FILE_PATH", "logs.txt")
 
-	// Reopen the file for reading
+	// Open the file for reading
 	file, err := os.Open(logFilePath)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to open log file")
+		return c.Status(fiber.StatusInternalServerError).SendString("Internal server error")
 	}
 	defer file.Close()
 
 	// Set the content type to plain text
 	c.Set("Content-Type", "text/plain")
 
-	// Stream the file contents to the response
-	_, err = io.Copy(c, file)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to read log file")
+	// Create a buffered reader
+	reader := bufio.NewReader(file)
+
+	// Stream and sanitize the file contents to the response
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return c.Status(fiber.StatusInternalServerError).SendString("Internal server error")
+		}
+
+		// Sanitize the log line
+		sanitizedLine := sanitizeLogLine(line)
+
+		// Write the sanitized line to the response
+		if _, err := c.Write([]byte(sanitizedLine)); err != nil {
+			return c.Status(fiber.StatusInternalServerError).SendString("Internal server error")
+		}
 	}
 
 	return nil
+}
+
+func sanitizeLogLine(line string) string {
+	// Remove any control characters
+	line = removeControlChars(line)
+
+	// Escape HTML special characters
+	line = html.EscapeString(line)
+
+	// Remove any potential sensitive information
+	line = removeSensitiveInfo(line)
+
+	return line
+}
+
+func removeControlChars(s string) string {
+	return regexp.MustCompile(`[\x00-\x1F\x7F]`).ReplaceAllString(s, "")
+}
+
+func removeSensitiveInfo(s string) string {
+	// Remove email addresses
+	s = regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b`).ReplaceAllString(s, "[EMAIL REDACTED]")
+
+	// Remove IP addresses
+	s = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`).ReplaceAllString(s, "[IP REDACTED]")
+
+	// Remove potential credit card numbers
+	s = regexp.MustCompile(`\b(?:\d{4}[-\s]?){3}\d{4}\b`).ReplaceAllString(s, "[CC REDACTED]")
+
+	// Add more patterns here as needed
+
+	return s
 }
 
 // Helper function to get environment variables with a default value
@@ -261,3 +317,22 @@ func getEnv(key, defaultValue string) string {
 // 	}
 // 	return value == "true" || value == "1" || value == "yes"
 // }
+
+// Add these new functions
+func getRateLimitMax() int {
+	max, err := strconv.Atoi(getEnv("RATE_LIMIT_MAX", "100"))
+	if err != nil {
+		log.Printf("Invalid RATE_LIMIT_MAX, using default: 100")
+		return 100
+	}
+	return max
+}
+
+func getRateLimitExpiration() time.Duration {
+	expiration, err := time.ParseDuration(getEnv("RATE_LIMIT_EXPIRATION", "1m"))
+	if err != nil {
+		log.Printf("Invalid RATE_LIMIT_EXPIRATION, using default: 1 minute")
+		return 1 * time.Minute
+	}
+	return expiration
+}

@@ -10,6 +10,12 @@ This project implements a high-performance logging server in Go using the Fiber 
 - Simple JSON API for submitting log entries
 - Buffered file writing for improved performance
 - Request logging middleware
+- CORS support
+- Compression middleware
+- Rate limiting
+- Monitoring endpoint
+- API key authentication
+- Log viewing endpoint with sanitization
 
 ## Prerequisites
 
@@ -20,7 +26,7 @@ This project implements a high-performance logging server in Go using the Fiber 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/high-performance-logger.git
+   git clone https://github.com/mood-agency/logging_server.git
    cd high-performance-logger
    ```
 
@@ -75,7 +81,7 @@ docker run -p 8080:8080 -e AUTHORIZED_USER_ID=your-unique-user-id-here -e LOG_FI
 To run the tests for this project, use the following command:
 
 ```bash
-go test ./...
+go test -v
 ```
 
 This command will run all tests in the project and its subdirectories. Make sure you're in the root directory of the project when running this command.
@@ -86,19 +92,43 @@ This command will run all tests in the project and its subdirectories. Make sure
 
 **Endpoint:** POST `/log`
 
+**Headers:**
+- `Content-Type: application/json`
+- `Authorization: your-api-key`
+
 **Request Body:**
-json
+```json
 {
-"message": "Your log message here",
-"level": "LOG_LEVEL"
+  "message": "Your log message here",
+  "level": "LOG_LEVEL"
 }
+```
 
 Replace `LOG_LEVEL` with the appropriate log level (e.g., INFO, WARNING, ERROR).
 
 **Response:**
 
 - Success: "Log entry recorded" (200 OK)
-- Error: Appropriate error message with corresponding HTTP status code
+- Error: 
+  - 400 Bad Request: "Invalid JSON"
+  - 401 Unauthorized: "Unauthorized" (if API key is missing or invalid)
+  - 500 Internal Server Error: "API_KEY not set" or "Failed to write log"
+
+**Notes:**
+- The API key must be provided in the `Authorization` header.
+- The API key should match the one set in the `API_KEY` environment variable.
+- Make sure to keep your API key secure and do not share it publicly.
+
+**Example using cURL:**
+
+```bash
+curl -X POST http://localhost:8080/log \
+  -H "Content-Type: application/json" \
+  -H "Authorization: your-api-key-here" \
+  -d '{"message": "This is a test log message", "level": "INFO"}'
+```
+
+Replace `your-api-key-here` with your actual API key.
 
 ## Performance Considerations
 
