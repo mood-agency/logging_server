@@ -61,7 +61,7 @@ func configureFiber() *fiber.App {
 		CaseSensitive: true,
 		Concurrency:   maxConcurrency,
 		ReadTimeout:   5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout:  10 * time.Second,
 		IdleTimeout:   120 * time.Second,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
@@ -85,7 +85,27 @@ func setupRoutes(app *fiber.App) {
 	app.Get("/metrics", monitor.New())
 }
 
+func logRequestMiddleware(c *fiber.Ctx) error {
+	// Imprime el método y el path antes de procesar la solicitud
+	method := c.Method()
+	path := c.Path()
+
+	// Llama a la siguiente función en la pila de middleware
+	err := c.Next()
+
+	// Obtén el código de estado después de procesar la solicitud
+	status := c.Response().StatusCode()
+
+	// Imprime el método, path y el estado
+	fmt.Printf("Request: %s %s -> Status: %d\n", method, path, status)
+
+	return err
+}
+
 func configureMiddleware(app *fiber.App) {
+
+	app.Use(logRequestMiddleware)
+
 	// Get CORS allowed origins from environment variable
 	allowedOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:8080")
 
