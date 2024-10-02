@@ -147,7 +147,7 @@ func main() {
 
 	app := configureFiber()
 
-	verbose, _ = strconv.ParseBool(getEnv("VERBOSE", "false"))
+	verbose, _ = strconv.ParseBool(getEnv("VERBOSE", "true"))
 	// Add this new middleware before setting up routes
 	app.Use(func(c *fiber.Ctx) error {
 		if verbose {
@@ -155,7 +155,7 @@ func main() {
 		}
 		return c.Next()
 	})
-	
+
 	setupRoutes(app)
 	configureMiddleware(app)
 

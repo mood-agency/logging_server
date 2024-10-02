@@ -38,21 +38,35 @@ This project implements a high-performance logging server in Go using the Fiber 
 
 ## ENV Configuration
 
-Before running the server, you need to configure your authorized user ID for security purposes. This is done through the `.env` file in the project root.
+Before running the server, you need to configure various settings through environment variables. This is typically done using a `.env` file in the project root. Here's an explanation of the available configuration options:
 
-1. If you haven't already, create a `.env` file in the project root.
+1. Create a `.env` file in the project root if you haven't already.
 
-2. Add the following line to your `.env` file:
+2. Add the following variables to your `.env` file:
 
    ```txt
-   AUTHORIZED_USER_ID=your-unique-user-id-here
+   LOG_FILE_PATH=logs.txt
+   SERVER_PORT=8080
+   PREFORK=true
+   API_KEY=your-unique-api-key-here
+   RATE_LIMIT_MAX=100
+   RATE_LIMIT_EXPIRATION=1m
+   VERBOSE=true
    ```
 
-   Replace `your-unique-user-id-here` with a unique identifier for your authorized user. This could be a UUID, a hash, or any other string that uniquely identifies the authorized user.
+   Here's what each variable means:
 
-3. Make sure to keep this ID secure and do not share it publicly.
+   - `LOG_FILE_PATH`: The path where log files will be stored. Default is "logs.txt" in the project root.
+   - `SERVER_PORT`: The port on which the server will listen. Default is 8080.
+   - `PREFORK`: Whether to use Fiber's prefork feature for multi-process architecture. Set to "true" or "false".
+   - `API_KEY`: A unique identifier for API authentication. Replace with a secure, randomly generated string.
+   - `RATE_LIMIT_MAX`: Maximum number of requests allowed within the rate limit window.
+   - `RATE_LIMIT_EXPIRATION`: Duration of the rate limit window (e.g., "1m" for 1 minute).
+   - `VERBOSE`: Enable verbose logging. Set to "true" or "false".
 
-This ID will be used to authenticate requests to view logs, ensuring that only authorized users can access the log data.
+3. Make sure to keep your `.env` file secure and do not share it publicly, especially the `API_KEY`.
+
+These environment variables will be used to configure the server's behavior and security settings. You can modify these values to suit your specific requirements.
 
 ## Running the Server
 
