@@ -60,8 +60,10 @@ Before running the server, you need to configure various settings through enviro
    - `SERVER_PORT`: The port on which the server will listen. Default is 8080.
    - `PREFORK`: Whether to use Fiber's prefork feature for multi-process architecture. Set to "true" or "false".
    - `API_KEY`: A unique identifier for API authentication. Replace with a secure, randomly generated string.
-   - `RATE_LIMIT_MAX`: Maximum number of requests allowed within the rate limit window.
-   - `RATE_LIMIT_EXPIRATION`: Duration of the rate limit window (e.g., "1m" for 1 minute).
+   - `RATE_LIMIT_MAX`: Maximum number of requests allowed per second. Default is 10000.
+   - `RATE_LIMIT_BURST`: Maximum number of requests allowed to burst. Default is 20000.
+   - `BUFFER_SIZE`: Size of the log buffer in bytes. Default is 1048576 (1MB).
+   - `FLUSH_INTERVAL`: Interval at which logs are flushed to disk. Default is 5s.
    - `VERBOSE`: Enable verbose logging. Set to "true" or "false".
 
 3. Make sure to keep your `.env` file secure and do not share it publicly, especially the `API_KEY`.

@@ -9,22 +9,32 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"loggingserver/config"
+	"loggingserver/handlers"
+	"loggingserver/middleware"
+	"loggingserver/utils"
 )
 
 func TestMain(m *testing.M) {
-	if err := initApp(); err != nil {
+	if err := config.InitApp(); err != nil {
 		panic(err)
 	}
 	code := m.Run()
 	os.Exit(code)
 }
 
+func setupTestApp() *fiber.App {
+	app := config.ConfigureFiber()
+	handlers.SetupRoutes(app)
+	middleware.ConfigureMiddleware(app)
+	return app
+}
+
 func TestWriteLogs(t *testing.T) {
-	app := configureFiber()
-	setupRoutes(app)
-	configureMiddleware(app)
+	app := setupTestApp()
 
 	t.Run("test_write_logs", func(t *testing.T) {
 		var wg sync.WaitGroup
@@ -32,7 +42,7 @@ func TestWriteLogs(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				logEntry := LogEntry{
+				logEntry := handlers.LogEntry{
 					Message: fmt.Sprintf("Test log entry %d", i),
 					Level:   "INFO",
 				}
@@ -42,7 +52,7 @@ func TestWriteLogs(t *testing.T) {
 					return
 				}
 
-				apiKey := getEnv("API_KEY", "")
+				apiKey := config.GetEnv("API_KEY", "")
 				req := httptest.NewRequest("POST", "/log", bytes.NewBuffer(jsonData))
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("Authorization", apiKey)
@@ -63,8 +73,14 @@ func TestWriteLogs(t *testing.T) {
 
 		wg.Wait()
 
+		// Add a small delay to ensure all goroutines have finished
+		time.Sleep(100 * time.Millisecond)
+
+		// Flush the logs
+		handlers.FlushLogsOnShutdown()
+
 		// Verify logs were written
-		apiKey := getEnv("API_KEY", "")
+		apiKey := config.GetEnv("API_KEY", "")
 		req := httptest.NewRequest("GET", "/logs", nil)
 		req.Header.Set("Authorization", apiKey)
 		resp, err := app.Test(req)
@@ -94,15 +110,13 @@ func TestWriteLogs(t *testing.T) {
 }
 
 func TestHandleLog(t *testing.T) {
-	app := configureFiber()
-	setupRoutes(app)
-	configureMiddleware(app)
+	app := setupTestApp()
 
-	apiKey := getEnv("API_KEY", "test_api_key")
+	apiKey := config.GetEnv("API_KEY", "test_api_key")
 	os.Setenv("API_KEY", apiKey)
 
 	t.Run("valid_log_entry", func(t *testing.T) {
-		logEntry := LogEntry{
+		logEntry := handlers.LogEntry{
 			Message: "Test log entry",
 			Level:   "INFO",
 		}
@@ -130,7 +144,7 @@ func TestHandleLog(t *testing.T) {
 	})
 
 	t.Run("missing_api_key", func(t *testing.T) {
-		logEntry := LogEntry{
+		logEntry := handlers.LogEntry{
 			Message: "Test log entry",
 			Level:   "INFO",
 		}
@@ -146,7 +160,7 @@ func TestHandleLog(t *testing.T) {
 	})
 
 	t.Run("invalid_api_key", func(t *testing.T) {
-		logEntry := LogEntry{
+		logEntry := handlers.LogEntry{
 			Message: "Test log entry",
 			Level:   "INFO",
 		}
@@ -164,11 +178,9 @@ func TestHandleLog(t *testing.T) {
 }
 
 func TestHandleViewLogs(t *testing.T) {
-	app := configureFiber()
-	setupRoutes(app)
-	configureMiddleware(app)
+	app := setupTestApp()
 
-	apiKey := getEnv("API_KEY", "test_api_key")
+	apiKey := config.GetEnv("API_KEY", "test_api_key")
 	os.Setenv("API_KEY", apiKey)
 
 	t.Run("valid_request", func(t *testing.T) {
@@ -207,11 +219,9 @@ func TestHandleViewLogs(t *testing.T) {
 }
 
 func TestHandleDeleteLogs(t *testing.T) {
-	app := configureFiber()
-	setupRoutes(app)
-	configureMiddleware(app)
+	app := setupTestApp()
 
-	apiKey := getEnv("API_KEY", "test_api_key")
+	apiKey := config.GetEnv("API_KEY", "test_api_key")
 	os.Setenv("API_KEY", apiKey)
 
 	t.Run("valid_request", func(t *testing.T) {
@@ -289,7 +299,7 @@ func TestSanitizeLogLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeLogLine(tt.input)
+			result := utils.SanitizeLogLine(tt.input)
 			if result != tt.expected {
 				t.Errorf("Expected %q, got %q", tt.expected, result)
 			}
