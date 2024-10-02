@@ -155,6 +155,11 @@ Replace `your-api-key-here` with your actual API key.
 - The API key should match the one set in the `API_KEY` environment variable.
 - This operation will delete the entire log file and reinitialize the log writer.
 
+### Monitoring
+
+**Endpoint:** GET `/metrics`
+
+**Description:** This endpoint provides metrics about the server's performance and resource usage like CPU, memory, response time and Open Connections.
 
 ## Performance Considerations
 

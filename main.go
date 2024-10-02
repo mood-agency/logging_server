@@ -36,6 +36,7 @@ var (
 	mu        sync.Mutex
 	ctx       context.Context
 	logWriter *bufio.Writer
+	verbose   bool
 )
 
 // Add this new function
@@ -85,36 +86,19 @@ func setupRoutes(app *fiber.App) {
 	app.Get("/metrics", monitor.New())
 }
 
-func logRequestMiddleware(c *fiber.Ctx) error {
-	// Imprime el método y el path antes de procesar la solicitud
-	method := c.Method()
-	path := c.Path()
-
-	// Llama a la siguiente función en la pila de middleware
-	err := c.Next()
-
-	// Obtén el código de estado después de procesar la solicitud
-	status := c.Response().StatusCode()
-
-	// Imprime el método, path y el estado
-	fmt.Printf("Request: %s %s -> Status: %d\n", method, path, status)
-
-	return err
-}
 
 func configureMiddleware(app *fiber.App) {
 
-	app.Use(logRequestMiddleware)
-
 	// Get CORS allowed origins from environment variable
 	allowedOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:8080")
+	allowCredentials, _ := strconv.ParseBool(getEnv("CORS_ALLOW_CREDENTIALS", "true"))
 
 	// Add CORS middleware
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
-		AllowCredentials: true,
+		AllowCredentials: allowCredentials,
 	}))
 
 	// Add compression middleware
@@ -156,11 +140,22 @@ func handleError(c *fiber.Ctx, status int, err error, details string) error {
 }
 
 func main() {
+	
 	if err := initApp(); err != nil {
 		log.Fatalf("Error initializing app: %v", err)
 	}
 
 	app := configureFiber()
+
+	verbose, _ = strconv.ParseBool(getEnv("VERBOSE", "false"))
+	// Add this new middleware before setting up routes
+	app.Use(func(c *fiber.Ctx) error {
+		if verbose {
+			fmt.Printf("Endpoint hit: %s %s\n", c.Method(), c.Path())
+		}
+		return c.Next()
+	})
+	
 	setupRoutes(app)
 	configureMiddleware(app)
 
