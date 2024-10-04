@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"loggingserver/config"
 	"loggingserver/handlers"
 	"loggingserver/middleware"
 	"loggingserver/utils"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 func TestMain(m *testing.M) {
@@ -33,8 +35,30 @@ func setupTestApp() *fiber.App {
 	return app
 }
 
+func sendLogEntry(t *testing.T, app *fiber.App, message string, level string, apiKey string) *http.Response {
+	logEntry := handlers.LogEntry{
+		Message: message,
+		Level:   level,
+	}
+	jsonData, err := json.Marshal(logEntry)
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/log", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", apiKey)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to send log entry: %v", err)
+	}
+	return resp
+}
+
 func TestWriteLogs(t *testing.T) {
 	app := setupTestApp()
+
+	apiKey := config.GetEnv("API_KEY", "")
 
 	t.Run("test_write_logs", func(t *testing.T) {
 		var wg sync.WaitGroup
@@ -42,31 +66,10 @@ func TestWriteLogs(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				logEntry := handlers.LogEntry{
-					Message: fmt.Sprintf("Test log entry %d", i),
-					Level:   "INFO",
-				}
-				jsonData, err := json.Marshal(logEntry)
-				if err != nil {
-					t.Errorf("Failed to marshal JSON: %v", err)
-					return
-				}
-
-				apiKey := config.GetEnv("API_KEY", "")
-				req := httptest.NewRequest("POST", "/log", bytes.NewBuffer(jsonData))
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("Authorization", apiKey)
-				resp, err := app.Test(req)
-				if err != nil {
-					t.Errorf("Failed to send log entry: %v", err)
-					return
-				}
-				defer resp.Body.Close()
-
+				message := fmt.Sprintf("Test log entry %d", i)
+				resp := sendLogEntry(t, app, message, "INFO", apiKey)
 				if resp.StatusCode != fiber.StatusOK {
-					body, _ := io.ReadAll(resp.Body)
-					t.Errorf("Unexpected status code: %d, body: %s", resp.StatusCode, string(body))
-					return
+					t.Errorf("Unexpected status code: %d", resp.StatusCode)
 				}
 			}(i)
 		}
@@ -80,7 +83,6 @@ func TestWriteLogs(t *testing.T) {
 		handlers.FlushLogsOnShutdown()
 
 		// Verify logs were written
-		apiKey := config.GetEnv("API_KEY", "")
 		req := httptest.NewRequest("GET", "/logs", nil)
 		req.Header.Set("Authorization", apiKey)
 		resp, err := app.Test(req)
@@ -116,17 +118,7 @@ func TestHandleLog(t *testing.T) {
 	os.Setenv("API_KEY", apiKey)
 
 	t.Run("valid_log_entry", func(t *testing.T) {
-		logEntry := handlers.LogEntry{
-			Message: "Test log entry",
-			Level:   "INFO",
-		}
-		jsonData, _ := json.Marshal(logEntry)
-
-		req := httptest.NewRequest("POST", "/log", bytes.NewBuffer(jsonData))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", apiKey)
-		resp, _ := app.Test(req)
-
+		resp := sendLogEntry(t, app, "Test log entry", "INFO", apiKey)
 		if resp.StatusCode != fiber.StatusOK {
 			t.Errorf("Expected status OK, got %v", resp.StatusCode)
 		}
@@ -144,35 +136,33 @@ func TestHandleLog(t *testing.T) {
 	})
 
 	t.Run("missing_api_key", func(t *testing.T) {
-		logEntry := handlers.LogEntry{
-			Message: "Test log entry",
-			Level:   "INFO",
-		}
-		jsonData, _ := json.Marshal(logEntry)
-
-		req := httptest.NewRequest("POST", "/log", bytes.NewBuffer(jsonData))
-		req.Header.Set("Content-Type", "application/json")
-		resp, _ := app.Test(req)
-
+		resp := sendLogEntry(t, app, "Test log entry", "INFO", "")
 		if resp.StatusCode != fiber.StatusUnauthorized {
 			t.Errorf("Expected status Unauthorized, got %v", resp.StatusCode)
 		}
 	})
 
 	t.Run("invalid_api_key", func(t *testing.T) {
-		logEntry := handlers.LogEntry{
-			Message: "Test log entry",
-			Level:   "INFO",
-		}
-		jsonData, _ := json.Marshal(logEntry)
-
-		req := httptest.NewRequest("POST", "/log", bytes.NewBuffer(jsonData))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "invalid_key")
-		resp, _ := app.Test(req)
-
+		resp := sendLogEntry(t, app, "Test log entry", "INFO", "invalid_key")
 		if resp.StatusCode != fiber.StatusUnauthorized {
 			t.Errorf("Expected status Unauthorized, got %v", resp.StatusCode)
+		}
+	})
+
+	t.Run("lowercase_log_level", func(t *testing.T) {
+		resp := sendLogEntry(t, app, "Test log entry with lowercase level", "info", apiKey)
+		if resp.StatusCode != fiber.StatusOK {
+			t.Errorf("Expected status OK, got %v", resp.StatusCode)
+		}
+
+		// Verify the log was written with lowercase level
+		getReq := httptest.NewRequest("GET", "/logs", nil)
+		getReq.Header.Set("Authorization", apiKey)
+		getResp, _ := app.Test(getReq)
+		body, _ := io.ReadAll(getResp.Body)
+		
+		if !bytes.Contains(body, []byte("INFO: Test log entry with lowercase level")) {
+			t.Errorf("Log entry not found or level was not capitalized")
 		}
 	})
 }
