@@ -10,6 +10,7 @@ import (
 	"loggingserver/utils"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,25 @@ var (
 	lastFlush     time.Time
 )
 
+type LogEntry struct {
+	Message string `json:"message"`
+	Level   string `json:"level"`
+}
+
+// init initializes the global variables for the logging system.
+//
+// This function is automatically called when the package is imported.
+// It sets up the following:
+//   - bufferSize: The size of the log buffer in bytes. Default is 1MB.
+//   - flushInterval: The interval at which logs are flushed to disk. Default is 1 second.
+//
+// The function reads configuration values from environment variables:
+//   - BUFFER_SIZE: Sets the buffer size in bytes. If invalid, defaults to 1MB.
+//   - FLUSH_INTERVAL: Sets the flush interval as a duration string (e.g., "1s", "500ms").
+//     If invalid, defaults to 5 seconds.
+//
+// If there are any errors parsing the environment variables, appropriate warning
+// messages are logged, and default values are used.
 func init() {
 	var err error
 	bufferSize, err = strconv.Atoi(config.GetEnv("BUFFER_SIZE", "1048576"))
@@ -42,11 +62,17 @@ func init() {
 	}
 }
 
-type LogEntry struct {
-	Message string `json:"message"`
-	Level   string `json:"level"`
-}
-
+// getRateLimiter retrieves or creates a rate limiter for the given API key.
+//
+// Parameters:
+//   - apiKey string: The API key to get or create a rate limiter for.
+//
+// Returns:
+//   - *rate.Limiter: A pointer to the rate.Limiter for the given API key.
+//
+// This function is thread-safe and manages a map of rate limiters for different API keys.
+// If a rate limiter doesn't exist for the given API key, it creates a new one based on
+// the configured rate limit and burst limit from the environment variables.
 func getRateLimiter(apiKey string) *rate.Limiter {
 	rateLimiterMu.Lock()
 	defer rateLimiterMu.Unlock()
@@ -71,7 +97,29 @@ func SetupRoutes(app *fiber.App) {
 	app.Get("/metrics", monitor.New())
 }
 
+// handleLog processes incoming log entries, validates them, and writes them to the log buffer.
+// It handles API key validation, rate limiting, and input validation before appending the log entry.
+//
+// Parameters:
+//   - c *fiber.Ctx: The Fiber context containing the request information.
+//
+// Returns:
+//   - error: An error if any step in the process fails, or nil if successful.
+//
+// The function performs the following steps:
+// 1. Validates the API key and checks for rate limiting.
+// 2. Parses the log entry from the request body.
+// 3. Validates the log entry (message length and log level).
+// 4. Appends the log entry to the buffer.
+// 5. Flushes the buffer if it's full or if the flush interval has elapsed.
+//
+// Possible error responses:
+// - 429 Too Many Requests: If the rate limit is exceeded.
+// - 400 Bad Request: If the JSON is invalid, the message is too long, or the log level is invalid.
+// - 500 Internal Server Error: If there's an error writing to the log file.
+// - 200 OK: If the log entry is successfully recorded.
 func handleLog(c *fiber.Ctx) error {
+	// Validate API key and check for rate limiting
 	if err := validateAPIKey(c); err != nil {
 		// If the error is due to rate limiting, return immediately
 		if err.Error() == "Rate limit exceeded" {
@@ -80,6 +128,7 @@ func handleLog(c *fiber.Ctx) error {
 		return err
 	}
 
+	// Parse the log entry from the request body
 	var entry LogEntry
 	if err := c.BodyParser(&entry); err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid JSON")
@@ -89,6 +138,10 @@ func handleLog(c *fiber.Ctx) error {
 	if len(entry.Message) > 1000 {
 		return c.Status(fiber.StatusBadRequest).SendString("Message too long")
 	}
+
+	// Force log level to uppercase
+	entry.Level = strings.ToUpper(entry.Level)
+
 	if !isValidLogLevel(entry.Level) {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid log level")
 	}
@@ -111,6 +164,25 @@ func handleLog(c *fiber.Ctx) error {
 
 	return c.SendString("Log entry recorded")
 }
+
+// handleViewLogs retrieves and returns the contents of the log file.
+//
+// Parameters:
+//   - c *fiber.Ctx: The Fiber context containing the request information.
+//
+// Returns:
+//   - error: An error if any step in the process fails, or nil if successful.
+//
+// The function performs the following steps:
+// 1. Validates the API key.
+// 2. Opens and reads the log file.
+// 3. Sanitizes each log line.
+// 4. Writes the sanitized logs to the response.
+//
+// Possible error responses:
+// - 401 Unauthorized: If the API key is invalid or missing.
+// - 500 Internal Server Error: If there's an error reading the log file or writing to the response.
+// - 200 OK: If the logs are successfully retrieved and returned.
 
 func handleViewLogs(c *fiber.Ctx) error {
 	if err := validateAPIKey(c); err != nil {
@@ -148,6 +220,26 @@ func handleViewLogs(c *fiber.Ctx) error {
 	return nil
 }
 
+// handleDeleteLogs deletes the current log file and reinitializes the log writer.
+//
+// Parameters:
+//   - c *fiber.Ctx: The Fiber context containing the request information.
+//
+// Returns:
+//   - error: An error if any step in the process fails, or nil if successful.
+//
+// The function performs the following steps:
+// 1. Validates the API key.
+// 2. Closes the current log file and flushes the writer.
+// 3. Deletes the log file.
+// 4. Reinitializes the log writer.
+//
+// Possible error responses:
+// - 401 Unauthorized: If the API key is invalid or missing.
+// - 404 Not Found: If the log file doesn't exist.
+// - 500 Internal Server Error: If there's an error deleting the file or reinitializing the log writer.
+// - 200 OK: If the log file is successfully deleted and the writer reinitialized.
+
 func handleDeleteLogs(c *fiber.Ctx) error {
 	if err := validateAPIKey(c); err != nil {
 		return err
@@ -179,6 +271,25 @@ func handleDeleteLogs(c *fiber.Ctx) error {
 	return c.SendString("Log file deleted successfully")
 }
 
+// validateAPIKey checks the validity of the API key provided in the request.
+//
+// Parameters:
+//   - c *fiber.Ctx: The Fiber context containing the request information.
+//
+// Returns:
+//   - error: An error if the API key is invalid, missing, or rate-limited; nil if the key is valid.
+//
+// The function performs the following steps:
+// 1. Retrieves the expected API key from the environment.
+// 2. Checks if the API key is set in the environment.
+// 3. Extracts the API key from the request's Authorization header.
+// 4. Compares the provided API key with the expected key.
+// 5. Applies rate limiting to the API key.
+//
+// Possible error responses:
+// - 500 Internal Server Error: If the API_KEY is not set in the environment.
+// - 401 Unauthorized: If the API key is missing or invalid.
+// - 429 Too Many Requests: If the rate limit for the API key is exceeded.
 func validateAPIKey(c *fiber.Ctx) error {
 	expectedAPIKey := config.GetEnv("API_KEY", "")
 	if expectedAPIKey == "" {
@@ -199,12 +310,13 @@ func validateAPIKey(c *fiber.Ctx) error {
 	return nil
 }
 
+// flushBuffer writes the contents of the logBuffer to the log file and flushes the writer.
+// It also resets the buffer and updates the lastFlush time.
+//
+// Returns:
+//   - error: Any error encountered during the write or flush operations.
 func flushBuffer() error {
-	// flushBuffer writes the contents of the logBuffer to the log file and flushes the writer.
-	// It also resets the buffer and updates the lastFlush time.
-	//
-	// Returns:
-	//   - error: Any error encountered during the write or flush operations.
+
 	if logBuffer.Len() == 0 {
 		return nil
 	}
